@@ -18,11 +18,7 @@ namespace PotDong.BloodBound {
 
         [Tooltip("MyCard")]
         [SerializeField]
-        private GameObject MyCard;
-
-        [Tooltip("MyCard(Vis)")]
-        [SerializeField]
-        private GameObject Charactor;
+        private GameObject Character;
 /*
         [Tooltip("Next Player Color")]
         [SerializeField]
@@ -32,14 +28,14 @@ namespace PotDong.BloodBound {
         [SerializeField]
         private GameObject NextColor;
 
-        [Tooltip("Blood")]
-        [SerializeField]
-        private GameObject PlayerSprite;
+        // [Tooltip("Blood")]
+        // [SerializeField]
+        // private GameObject PlayerSprite;
         #endregion
 
         #region Private Fields
         private bool _isRendered_MyCard = false;
-        //private bool _isRendered_NextPlayerColor = false;
+        private Card my_card = null;
         private bool _isRendered_NextPlayerColor = true;
         private Dictionary<string,GameObject> AllPlayers = new Dictionary<string,GameObject>();
         #endregion
@@ -51,20 +47,20 @@ namespace PotDong.BloodBound {
             float radius = Mathf.Min(this.GetComponent<RectTransform>().rect.height, this.GetComponent<RectTransform>().rect.width)/2-50.0f;
             
             for(int i=0; i<playerCount ; i++) {
-                float angle = i * Mathf.PI*2f / playerCount;
+                float angle = i * Mathf.PI * 2f / playerCount;
                 angle -= (float)0.5*Mathf.PI;
                 Vector2 newPos = new Vector3(Mathf.Cos(angle)*radius,Mathf.Sin(angle)*radius);
                 GameObject g = Instantiate(bloodBoundPlayer, newPos, Quaternion.identity, this.transform);
                 g.GetComponent<RectTransform>().anchoredPosition = newPos;
-                g.GetComponent<Text>().text = nextPlayer.NickName;
+                g.GetComponentInChildren<Text>().text = nextPlayer.NickName;
                 g.GetComponent<BloodBoundPlayer>().player = nextPlayer;
                 AllPlayers.Add(nextPlayer.UserId, g);
                 nextPlayer = nextPlayer.GetNext();
             }
         }
 
-        void test_instantiatePlayersName() {
-            int playerCount = 8;
+        void test_instantiatePlayersName(int playerCount) {
+            
             float radius = Mathf.Min(this.GetComponent<RectTransform>().rect.height, this.GetComponent<RectTransform>().rect.width)/2-50.0f;
             for(int i=0; i<playerCount ; i++) {
                 float angle = i * Mathf.PI*2f / playerCount;
@@ -119,14 +115,11 @@ namespace PotDong.BloodBound {
             player.SetCustomProperties(t);
         }
 
-        
-
         public void DisplayMyCard() {
             if (!_isRendered_MyCard) {
-                RenderMyCard();
-                _isRendered_MyCard = true;
+                if(RenderMyCard())              
+                    _isRendered_MyCard = true;
             }
-            MyCard.SetActive(!MyCard.activeSelf);
         }
 
         public void DisplayNextPlayerCard() {
@@ -137,14 +130,14 @@ namespace PotDong.BloodBound {
             }
             NextPlayerColor.SetActive(!NextPlayerColor.activeSelf);
             */
-            NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("UI_dong/questionblood");
+            NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/QuestionBlood");
             Player nextPlayer = PhotonNetwork.LocalPlayer.GetNext();
             Color nextPlayerColor = (Color) nextPlayer.CustomProperties[Constants.key_shown_color];
             if (nextPlayerColor == Color.Blue) {
-                NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("UI_dong/blueblood");
+                NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/BlueBlood");
             } 
             else {
-                NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("UI_dong/redblood");
+                NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/RedBlood");
             }
             
         }
@@ -158,10 +151,15 @@ namespace PotDong.BloodBound {
         #region MonoBehaviour Callbacks
         
         void Start() {
-            MyCard.SetActive(false);
-            //NextPlayerColor.SetActive(false);
             instantiatePlayersName();
             DisplayMyCard();
+            Debug.Log("GameUiManager: Start() end");
+        }
+
+        void Update() {
+            if(!_isRendered_MyCard) {
+                DisplayMyCard();
+            }
         }
         #endregion
         
@@ -173,32 +171,30 @@ namespace PotDong.BloodBound {
             AllPlayers[p.UserId].GetComponent<BloodBoundPlayer>().updateSprite(BloodIdx, BloodArr);
             Debug.Log(p.NickName+": idx="+BloodIdx.ToString());
 
+            if(p==PhotonNetwork.LocalPlayer && my_card == null) {
+                Color myTeam = (Color) changedProps[Constants.key_team];
+                int myNum = (int) changedProps[Constants.key_num];
+                my_card = new Card(myTeam, myNum);
+            }
         }
         #endregion
 
         #region Private Methods
 
-        void RenderMyCard() {
-            GameObject chColor = MyCard.transform.GetChild(0).gameObject;
-            GameObject chNum = MyCard.transform.GetChild(1).gameObject;
-            Color myTeam = (Color) PhotonNetwork.LocalPlayer.CustomProperties[Constants.key_team];
-            int myNum = (int) PhotonNetwork.LocalPlayer.CustomProperties[Constants.key_num];
-            Card my_card = new Card(myTeam, myNum);
-            
-            if (my_card.Team == Color.Blue) {
-                chColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/BlueBlood");
+
+        bool RenderMyCard() {
+            // yield return new WaitUntil(() => my_card != null);
+            if(my_card!=null) {
+                string cardname;
+                if(my_card.Team == Color.Blue)  cardname = "UI_dong/blue"+my_card.Num.ToString();
+                else cardname = "UI_dong/red" + my_card.Num.ToString();
+                Character.GetComponent<Image>().sprite = Resources.Load<Sprite>(cardname);
+                return true;
             } else {
-                chColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/RedBlood");
+                return false;
             }
-            string loader = "Sprites/NumBlood" + my_card.Num.ToString();
-            chNum.GetComponent<Image>().sprite = Resources.Load<Sprite>(loader);
-
-            string cardname;
-            if(my_card.Team == Color.Blue)  cardname = "UI_dong/blue"+myNum.ToString();
-            else    cardname = "UI_dong/red"+myNum.ToString();
-            Charactor.GetComponent<Image>().sprite = Resources.Load<Sprite>(cardname);
-            Debug.Log("cardname");
-
+            
+            // Debug.Log(cardname);
         }
 
         /*

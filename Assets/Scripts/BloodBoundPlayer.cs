@@ -11,8 +11,7 @@ namespace PotDong.BloodBound {
         [Tooltip("Blood")]
         [SerializeField]
         private GameObject[] mBlood;
-        
-        
+    
         #endregion
 
         #region Private Fields

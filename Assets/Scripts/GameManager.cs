@@ -11,9 +11,6 @@ namespace PotDong.BloodBound {
     public class GameManager : MonoBehaviourPunCallbacks {
         
         #region Private Serialize Fields
-        [Tooltip("MyCard")]
-        [SerializeField]
-        private GameObject MyCard;
         #endregion
         #region Private Fields
         private static Random _random = new Random(); 
