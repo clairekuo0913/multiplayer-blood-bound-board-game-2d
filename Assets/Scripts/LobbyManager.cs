@@ -19,7 +19,7 @@ namespace PotDong.BloodBound {
 
         [Tooltip("text of list of players")]
         [SerializeField]
-        private Text listOfPlayers;
+        private GameObject listOfPlayers;
 
         #endregion
 
@@ -95,11 +95,11 @@ namespace PotDong.BloodBound {
         }
 
         void updatePlayerList() {
-            playerList = "Current Players:\n";
+            playerList = "在線玩家 :\n";
             foreach (Player player in PhotonNetwork.PlayerList) {
                 playerList += player.NickName+"\n";
             }
-            listOfPlayers.text = playerList;
+            listOfPlayers.GetComponent<Text>().text = playerList;
         }
 
         #endregion
