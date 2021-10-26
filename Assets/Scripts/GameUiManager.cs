@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using ExitGames.Client.Photon;
 using Photon.Pun;
 using Photon.Realtime;
 using System.Linq;
+using UnityEngine.EventSystems;
+
 
 namespace PotDong.BloodBound {
-    public class GameUiManager : MonoBehaviourPunCallbacks {
+    public class GameUiManager : MonoBehaviourPunCallbacks,IOnEventCallback {
 
         #region Private Serializable Fields
 
@@ -19,25 +22,52 @@ namespace PotDong.BloodBound {
         [Tooltip("MyCard")]
         [SerializeField]
         private GameObject Character;
-/*
-        [Tooltip("Next Player Color")]
+
+        [Tooltip("Blood Space - Color Blood")]
         [SerializeField]
-        private GameObject NextPlayerColor;
-*/
+        private GameObject ColorBloodButton;
+
+        [Tooltip("Blood Space - Number Blood")]
+        [SerializeField]
+        private GameObject NumberBloodButton;
+
         [Tooltip("Next Color")]
         [SerializeField]
         private GameObject NextColor;
 
-        // [Tooltip("Blood")]
-        // [SerializeField]
-        // private GameObject PlayerSprite;
+        [Tooltip("Popup Panel")]
+        [SerializeField]       
+        private GameObject PopupPanel;
+
+        [Tooltip("Knife")]
+        [SerializeField]
+        private GameObject knife;
+
+        [Tooltip("KnifeSpeed")]
+        [SerializeField]
+        private float knife_speed;
+        #endregion
+
+        #region Public Fields
+        [HideInInspector]
+        public GameObject lastSelectedGameObject;
         #endregion
 
         #region Private Fields
         private bool _isRendered_MyCard = false;
         private Card my_card = null;
-        private bool _isRendered_NextPlayerColor = true;
+
+        /* Allplayers[Player.UserId] = UserTemplateGameObject */
         private Dictionary<string,GameObject> AllPlayers = new Dictionary<string,GameObject>();
+
+        /* Knife 相關參數 */
+        private bool _isKnifeMoving = false;    // 開關，在Update()中監測，如果是true則更新knife_game_object的位置
+        private string knife_p1, knife_p2;
+        private Vector3 knife_pos1, knife_pos2;
+        private GameObject currentSelectedGameObject_Recent;
+        private GameObject knife_game_object;
+        private bool knife_isGive;
+
         #endregion
 
         #region Private Methods
@@ -74,6 +104,25 @@ namespace PotDong.BloodBound {
         #endregion
 
         #region Public Methods
+
+        public void KnifeStabButtonClick() {
+            
+            if(lastSelectedGameObject!=null && lastSelectedGameObject.name == "isSelected" && lastSelectedGameObject.transform.parent.gameObject.GetComponent<BloodBoundPlayer>() != null) {
+                choosePlayerEnd();
+                GameObject g = lastSelectedGameObject.transform.parent.gameObject;
+                KnifeStabPlayer(PhotonNetwork.LocalPlayer, g.GetComponent<BloodBoundPlayer>().player);
+            }
+        }
+
+        public void KnifeGiveButtonClick() {
+            
+            if(lastSelectedGameObject!=null && lastSelectedGameObject.name == "isSelected" && lastSelectedGameObject.transform.parent.gameObject.GetComponent<BloodBoundPlayer>() != null) {
+                choosePlayerEnd();
+                GameObject g = lastSelectedGameObject.transform.parent.gameObject;
+                KnifeGivePlayer(PhotonNetwork.LocalPlayer, g.GetComponent<BloodBoundPlayer>().player);
+            }
+        }
+
 
         public void CostBlood(string strBlood) {
             Player player = PhotonNetwork.LocalPlayer;
@@ -117,19 +166,12 @@ namespace PotDong.BloodBound {
 
         public void DisplayMyCard() {
             if (!_isRendered_MyCard) {
-                if(RenderMyCard())              
+                if(LocalRender())              
                     _isRendered_MyCard = true;
             }
         }
 
         public void DisplayNextPlayerCard() {
-            /*
-            if (!_isRendered_NextPlayerColor) {
-                RenderNextPlayerColor();
-                _isRendered_NextPlayerColor = true;
-            }
-            NextPlayerColor.SetActive(!NextPlayerColor.activeSelf);
-            */
             NextColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/QuestionBlood");
             Player nextPlayer = PhotonNetwork.LocalPlayer.GetNext();
             Color nextPlayerColor = (Color) nextPlayer.CustomProperties[Constants.key_shown_color];
@@ -157,8 +199,19 @@ namespace PotDong.BloodBound {
         }
 
         void Update() {
+            GetLastGameObjectSelected();
             if(!_isRendered_MyCard) {
                 DisplayMyCard();
+            }
+            if(_isKnifeMoving ==true) {   
+                knife_game_object.transform.position = Vector2.MoveTowards(knife_game_object.transform.position, knife_pos2, knife_speed * Time.deltaTime);
+                if(knife_game_object.transform.position == knife_pos2) {
+                    // Destroy(knife_game_object);
+                    _isKnifeMoving = false;
+
+                    SetKnifeOwner(AllPlayers[knife_p2].GetComponent<BloodBoundPlayer>().player);
+
+                }
             }
         }
         #endregion
@@ -177,37 +230,125 @@ namespace PotDong.BloodBound {
                 my_card = new Card(myTeam, myNum);
             }
         }
+
+        public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable changedProps) {
+            if(changedProps.ContainsKey(Constants.key_knife_owner)) {
+                int knifeOwnerId = (int)changedProps[Constants.key_knife_owner];
+                if(knifeOwnerId == PhotonNetwork.LocalPlayer.ActorNumber) {
+                    choosePlayer();
+                } else {
+                    Debug.Log(PhotonNetwork.LocalPlayer.Get(knifeOwnerId).NickName + " is the knife owner");
+                }
+            }
+        }
+
+        #endregion
+        
+        
+        /**
+        *
+        * 所有玩家接收到event1就會同步update畫面上的刀子
+        *
+        */
+        #region IOnEventCallback
+        public void OnEvent(EventData photonEvent) {
+            if(knife_game_object!= null)
+                Destroy(knife_game_object);
+            byte eventCode = photonEvent.Code;
+            if (eventCode == Constants.eventcode_move_knife) {
+                object[] data = (object[]) photonEvent.CustomData;
+                knife_p1 = (string) data[0];
+                knife_p2 = (string) data[1];
+                knife_isGive = (bool)data[2];
+                knife_pos1 = AllPlayers[knife_p1].transform.position;
+                knife_pos2 = AllPlayers[knife_p2].transform.position;
+                knife_game_object = Instantiate(knife, knife_pos1 , Quaternion.identity, this.transform);
+
+                if(knife_isGive) {
+                    knife_game_object.transform.up = -(knife_pos2 - knife_pos1).normalized;
+                } else {
+                    knife_game_object.transform.up = (knife_pos2 - knife_pos1).normalized;
+                }
+                _isKnifeMoving = true;
+            }
+        }
         #endregion
 
         #region Private Methods
 
+        void choosePlayer() {
+            PopupPanel.SetActive(true);
+            
+            foreach (KeyValuePair<string,GameObject> player in AllPlayers) {
+                if(player.Key == PhotonNetwork.LocalPlayer.UserId) continue;
+                GameObject g = player.Value.transform.Find("isSelected").gameObject;
+                g.SetActive(true);
+            }
+        }
 
-        bool RenderMyCard() {
-            // yield return new WaitUntil(() => my_card != null);
+        
+        void KnifeUpdateEvent() { 
+            RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.All }; // You would have to set the Receivers to All in order to receive this event on the local client as well
+            object[] content = new object[] {knife_p1, knife_p2, knife_isGive}; // true = give, false = stab
+            PhotonNetwork.RaiseEvent(Constants.eventcode_move_knife, content, raiseEventOptions, SendOptions.SendReliable);
+        }
+
+        void KnifeStabPlayer(Player p1, Player p2) {
+            knife_p1 = p1.UserId;
+            knife_p2 = p2.UserId;
+            knife_isGive = false;
+            KnifeUpdateEvent();   
+        }
+
+
+        void KnifeGivePlayer(Player p1, Player p2) {
+            knife_p1 = p1.UserId;
+            knife_p2 = p2.UserId;
+            knife_isGive = true;
+            KnifeUpdateEvent();
+        }
+
+    
+
+        void choosePlayerEnd() {
+            PopupPanel.SetActive(false);
+            foreach (KeyValuePair<string,GameObject> player in AllPlayers) {
+                GameObject g = player.Value.transform.Find("isSelected").gameObject;
+                g.SetActive(false);
+             }
+        }
+
+        bool LocalRender() {
             if(my_card!=null) {
                 string cardname;
-                if(my_card.Team == Color.Blue)  cardname = "UI_dong/blue"+my_card.Num.ToString();
-                else cardname = "UI_dong/red" + my_card.Num.ToString();
+                if(my_card.Team == Color.Blue)  cardname = "UI_dong/blue" + my_card.Num.ToString();
+                else cardname = "UI_dong/red"+my_card.Num.ToString();
                 Character.GetComponent<Image>().sprite = Resources.Load<Sprite>(cardname);
+                if(my_card.Team == Color.Blue) {
+                    ColorBloodButton.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/BlueBlood");
+                } else {
+                    ColorBloodButton.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/RedBlood");
+                }
+                NumberBloodButton.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/NumBlood" + my_card.Num.ToString());
                 return true;
             } else {
                 return false;
             }
-            
-            // Debug.Log(cardname);
         }
 
-        /*
-        void RenderNextPlayerColor() {
-            Player nextPlayer = PhotonNetwork.LocalPlayer.GetNext();
-            Color nextPlayerColor = (Color) nextPlayer.CustomProperties[Constants.key_shown_color];
-            if (nextPlayerColor == Color.Blue) {
-                NextPlayerColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/BlueBlood");
-            } else {
-                NextPlayerColor.GetComponent<Image>().sprite = Resources.Load<Sprite>("Sprites/RedBlood");
+        void GetLastGameObjectSelected() {
+            if(EventSystem.current.currentSelectedGameObject != currentSelectedGameObject_Recent) {
+                lastSelectedGameObject = currentSelectedGameObject_Recent;
+                currentSelectedGameObject_Recent = EventSystem.current.currentSelectedGameObject;
             }
-            Debug.Log(nextPlayer.NickName+":"+nextPlayerColor.ToString());
-        }*/
+        }
+
+        void SetKnifeOwner(Player p) {
+            ExitGames.Client.Photon.Hashtable t = new ExitGames.Client.Photon.Hashtable();
+            t.Add(Constants.key_knife_owner, p.ActorNumber);
+            PhotonNetwork.CurrentRoom.SetCustomProperties(t);
+        }
+
 
         #endregion
     }

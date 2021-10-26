@@ -31,7 +31,14 @@ namespace PotDong.BloodBound {
             if (PhotonNetwork.IsMasterClient) {
                 InitCardPile(PhotonNetwork.CurrentRoom.PlayerCount);
                 DealCards();
+                InitKnifeOwner();
             }
+            
+            // into turn based game
+            // 1. Decide who is the knifeOwner
+            // 2. knifeOwner choose a player
+            // 3. knifeOwner choose give or stab
+            // 4. knifeOwner = player chosen
         }
         #endregion
 
@@ -71,10 +78,8 @@ namespace PotDong.BloodBound {
         
         void DealCards () {
             int i=0;
-            
             foreach (Player player in PhotonNetwork.PlayerList) {
                 ExitGames.Client.Photon.Hashtable t = new ExitGames.Client.Photon.Hashtable();
-
                 Card card = CardPile[i];
                 t.Add(Constants.key_team, card.Team);
                 t.Add(Constants.key_num, card.Num);
@@ -83,14 +88,20 @@ namespace PotDong.BloodBound {
                 t.Add(Constants.key_blood_arr, blood_arr);
                 t.Add(Constants.key_blood_idx, 0);
                 // Debug.Log(player.NickName + ": ("+bbPlayer.card.Team.ToString()+","+bbPlayer.card.Num.ToString()+")");
-                
                 player.SetCustomProperties(t);
                 i++;
-                
             }
         }
-        
-        
+
+        void InitKnifeOwner() {
+            ExitGames.Client.Photon.Hashtable t = new ExitGames.Client.Photon.Hashtable();
+            int random_player_id = PhotonNetwork.PlayerList[UnityEngine.Random.Range(0, PhotonNetwork.CurrentRoom.PlayerCount)].ActorNumber;
+            // t.Add(Constants.key_knife_owner, random_player_id);
+            t.Add(Constants.key_knife_owner, PhotonNetwork.LocalPlayer.ActorNumber);
+            PhotonNetwork.CurrentRoom.SetCustomProperties(t);
+            Player knifeOwner = PhotonNetwork.LocalPlayer.Get(random_player_id);
+            Debug.Log("Knife Owner Init: "+ knifeOwner.NickName);
+        }
 
         #endregion
 

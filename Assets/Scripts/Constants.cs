@@ -11,5 +11,9 @@ namespace PotDong.BloodBound {
 
         public const string key_blood_arr = "bloodArr";
         public const string key_blood_idx = "bloodIdx";
+
+        public const string key_knife_owner = "knifeOwner";
+
+        public const byte eventcode_move_knife = 1;
     }
 }
